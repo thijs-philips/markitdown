@@ -1,0 +1,138 @@
+name: Build Windows Executable
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_externals:
+        description: 'Bundle exiftool and ffmpeg'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ['3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install markitdown[all] and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install "./packages/markitdown[all]" pyinstaller
+
+      - name: Download external tools
+        if: ${{ github.event.inputs.include_externals != 'false' }}
+        shell: pwsh
+        run: |
+          .\build_exe\download_externals.ps1 -Tool all -OutputDir .\build_exe\external
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        working-directory: build_exe
+        run: |
+          pyinstaller markitdown.spec --noconfirm --clean
+
+      - name: Verify build
+        shell: pwsh
+        run: |
+          $exe = ".\build_exe\dist\markitdown\markitdown.exe"
+          Write-Host "=== Version ==="
+          & $exe --version
+          Write-Host ""
+          Write-Host "=== Info ==="
+          & $exe --info
+
+      - name: Test basic conversions
+        shell: pwsh
+        run: |
+          $exe = ".\build_exe\dist\markitdown\markitdown.exe"
+          $testDir = ".\packages\markitdown\tests\test_files"
+
+          Write-Host "=== Test: HTML ==="
+          & $exe "$testDir\test_blog.html" | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: CSV ==="
+          & $exe "$testDir\test_mskanji.csv" | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: EPUB ==="
+          & $exe "$testDir\test.epub" | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: Jupyter Notebook ==="
+          & $exe "$testDir\test_notebook.ipynb" | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: JSON ==="
+          & $exe "$testDir\test.json" | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: RSS/XML ==="
+          & $exe "$testDir\test_rss.xml" | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: stdin pipe ==="
+          Get-Content -Raw "$testDir\test.json" | & $exe -x .json | Select-Object -First 5
+
+          Write-Host ""
+          Write-Host "=== Test: output to file ==="
+          & $exe "$testDir\test_blog.html" -o test_output.md
+          if (Test-Path test_output.md) {
+            $lineCount = (Get-Content test_output.md).Count
+            Write-Host "Output file created: test_output.md ($lineCount lines)"
+            Remove-Item test_output.md
+          } else {
+            Write-Host "ERROR: Output file not created!" -ForegroundColor Red
+            exit 1
+          }
+
+      - name: Get version string
+        id: version
+        shell: pwsh
+        run: |
+          $ver = (& .\build_exe\dist\markitdown\markitdown.exe --version 2>&1) -replace "markitdown\s+", "" -replace "\s+\(standalone\)", ""
+          $ver = $ver.Trim()
+          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $ver"
+
+      - name: Package as zip
+        shell: pwsh
+        run: |
+          $zipName = "markitdown-${{ steps.version.outputs.VERSION }}-win-x64.zip"
+          Compress-Archive -Path .\build_exe\dist\markitdown -DestinationPath ".\build_exe\dist\$zipName" -Force
+          $size = [math]::Round((Get-Item ".\build_exe\dist\$zipName").Length / 1MB, 1)
+          Write-Host "Created: $zipName ($size MB)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: markitdown-${{ steps.version.outputs.VERSION }}-win-x64
+          path: build_exe/dist/markitdown-*-win-x64.zip
+          retention-days: 30
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build_exe/dist/markitdown-*-win-x64.zip
+          draft: true

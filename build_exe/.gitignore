@@ -1,0 +1,12 @@
+# Build artifacts
+build/
+dist/
+.venv/
+
+# Downloaded external binaries
+external/
+
+# PyInstaller temp files
+*.manifest
+*.log
+warn-*.txt
