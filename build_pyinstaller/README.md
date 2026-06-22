@@ -175,19 +175,19 @@ All conversion capabilities and other CLI flags are identical.
 ### Quick build
 
 ```powershell
-cd build_exe
+cd build_pyinstaller
 .\build.ps1
 ```
 
 This will:
-1. Create a virtual environment in `build_exe/.venv/`
+1. Create a virtual environment in `build_pyinstaller/.venv/`
 2. Install `markitdown[all]` and PyInstaller
 3. Download ExifTool and ffmpeg
 4. Run PyInstaller to produce the directory bundle
 5. Verify the build
 6. Package into `dist/markitdown-x.y.z-win-x64.zip`
 
-The output is at `build_exe/dist/markitdown/markitdown.exe`.
+The output is at `build_pyinstaller/dist/markitdown/markitdown.exe`.
 
 ### Build options
 
@@ -204,7 +204,7 @@ The output is at `build_exe/dist/markitdown/markitdown.exe`.
 If you prefer to run each step yourself:
 
 ```powershell
-cd build_exe
+cd build_pyinstaller
 
 # 1. Create and activate a virtual environment
 python -m venv .venv
@@ -232,19 +232,19 @@ If the automated download fails, place the binaries manually:
 **ExifTool:**
 1. Download from https://exiftool.org — get the "Windows Executable" zip
 2. Rename `exiftool(-k).exe` → `exiftool.exe`
-3. Place in `build_exe/external/exiftool.exe`
+3. Place in `build_pyinstaller/external/exiftool.exe`
 
 **ffmpeg:**
 1. Download from https://www.gyan.dev/ffmpeg/builds/ — get the "essentials" build
 2. Extract `ffmpeg.exe` and `ffprobe.exe` from the `bin/` directory
-3. Place both in `build_exe/external/`
+3. Place both in `build_pyinstaller/external/`
 
 ### Running the test suite
 
 After building, verify the exe against the project's test files:
 
 ```powershell
-cd build_exe
+cd build_pyinstaller
 python test_exe.py
 ```
 
@@ -262,7 +262,7 @@ Artifacts are uploaded and retained for 30 days.
 ## Directory Structure
 
 ```
-build_exe/
+build_pyinstaller/
 ├── build.ps1                 # Main build script
 ├── download_externals.ps1    # Downloads ExifTool & ffmpeg
 ├── markitdown_cli.py         # Standalone CLI entry point
@@ -311,3 +311,4 @@ PyInstaller executables are occasionally flagged by antivirus software. This is 
 - Use Python 3.10+ (3.12 or 3.13 recommended)
 - Run `pip install markitdown[all] pyinstaller --upgrade`
 - Ensure `magika~=0.6.1` installs correctly (requires `onnxruntime`)
+

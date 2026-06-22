@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test the standalone markitdown.exe against the test vectors from _test_vectors.py.
-Run this from the build_exe directory after building.
+Run this from the build_pyinstaller directory after building.
 """
 
 import subprocess
