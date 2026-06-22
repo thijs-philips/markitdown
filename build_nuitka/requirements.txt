@@ -1,0 +1,40 @@
+# Lean dependency set for Nuitka standalone build.
+# Excludes heavy packages (magika/onnxruntime/numpy/pandas) that are replaced
+# by lightweight alternatives built into the markitdown source.
+#
+# Install with:  pip install -r requirements.txt
+
+# --- Core markitdown (editable, from local source) ---
+# Installed separately by build.ps1 as: pip install -e ../packages/markitdown
+
+# --- File type detection (replaces magika+onnxruntime+numpy ~54 MB) ---
+filetype>=1.2.0
+
+# --- Document converters ---
+markdownify>=0.13.0     # HTML-to-Markdown
+defusedxml>=0.7.1       # Safe XML parsing
+mammoth>=1.8.0          # DOCX
+pdfminer.six>=20231228  # PDF text extraction
+pdfplumber>=0.11.0      # PDF tables
+pypdfium2>=4.30.0       # PDF rendering
+openpyxl>=3.1.0         # XLSX (replaces pandas)
+xlrd>=2.0.1             # XLS  (replaces pandas)
+python-pptx>=1.0.0      # PPTX
+beautifulsoup4>=4.12.0  # HTML
+lxml>=5.0.0             # XML/HTML parsing
+olefile>=0.47           # Outlook MSG
+
+# --- Media ---
+Pillow>=10.0.0          # Image EXIF
+SpeechRecognition>=3.10.0  # Audio transcription
+pydub>=0.25.1           # Audio processing
+
+# --- Networking ---
+requests>=2.31.0        # URL fetching
+charset-normalizer>=3.0 # Encoding detection
+
+# --- EPUB ---
+ebooklib>=0.18
+
+# --- Build tool ---
+nuitka>=4.1
