@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from warnings import warn
 import requests
-import magika
+from ._filetype_detector import LightFileTypeDetector
 import charset_normalizer
 import codecs
 
@@ -118,7 +118,7 @@ class MarkItDown:
         else:
             self._requests_session = requests_session
 
-        self._magika = magika.Magika()
+        self._magika = LightFileTypeDetector()
 
         # TODO - remove these (see enable_builtins)
         self._llm_client: Any = None

@@ -1,6 +1,6 @@
 import sys
+from html import escape as html_escape
 from typing import BinaryIO, Any
-from ._html_converter import HtmlConverter
 from .._base_converter import DocumentConverter, DocumentConverterResult
 from .._exceptions import MissingDependencyException, MISSING_DEPENDENCY_MESSAGE
 from .._stream_info import StreamInfo
@@ -9,17 +9,34 @@ from .._stream_info import StreamInfo
 # Save reporting of any exceptions for later
 _xlsx_dependency_exc_info = None
 try:
-    import pandas as pd
-    import openpyxl  # noqa: F401
+    import openpyxl
 except ImportError:
     _xlsx_dependency_exc_info = sys.exc_info()
 
 _xls_dependency_exc_info = None
 try:
-    import pandas as pd  # noqa: F811
-    import xlrd  # noqa: F401
+    import xlrd
 except ImportError:
     _xls_dependency_exc_info = sys.exc_info()
+
+
+def _rows_to_markdown(headers, rows):
+    """Convert a list of header names and row data to a Markdown table string."""
+    if not headers:
+        return ""
+
+    # Escape pipe characters and sanitize cell values
+    def _cell(v):
+        if v is None:
+            return ""
+        return html_escape(str(v)).replace("|", "\\|")
+
+    lines = []
+    lines.append("| " + " | ".join(_cell(h) for h in headers) + " |")
+    lines.append("| " + " | ".join("---" for _ in headers) + " |")
+    for row in rows:
+        lines.append("| " + " | ".join(_cell(c) for c in row) + " |")
+    return "\n".join(lines)
 
 ACCEPTED_XLSX_MIME_TYPE_PREFIXES = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -37,10 +54,6 @@ class XlsxConverter(DocumentConverter):
     """
     Converts XLSX files to Markdown, with each sheet presented as a separate Markdown table.
     """
-
-    def __init__(self):
-        super().__init__()
-        self._html_converter = HtmlConverter()
 
     def accepts(
         self,
@@ -80,17 +93,18 @@ class XlsxConverter(DocumentConverter):
                 _xlsx_dependency_exc_info[2]
             )
 
-        sheets = pd.read_excel(file_stream, sheet_name=None, engine="openpyxl")
+        wb = openpyxl.load_workbook(file_stream, read_only=True, data_only=True)
         md_content = ""
-        for s in sheets:
-            md_content += f"## {s}\n"
-            html_content = sheets[s].to_html(index=False)
-            md_content += (
-                self._html_converter.convert_string(
-                    html_content, **kwargs
-                ).markdown.strip()
-                + "\n\n"
-            )
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            all_rows = list(ws.iter_rows(values_only=True))
+            if not all_rows:
+                continue
+            headers = [c if c is not None else "" for c in all_rows[0]]
+            data = all_rows[1:]
+            md_content += f"## {sheet_name}\n"
+            md_content += _rows_to_markdown(headers, data) + "\n\n"
+        wb.close()
 
         return DocumentConverterResult(markdown=md_content.strip())
 
@@ -99,10 +113,6 @@ class XlsConverter(DocumentConverter):
     """
     Converts XLS files to Markdown, with each sheet presented as a separate Markdown table.
     """
-
-    def __init__(self):
-        super().__init__()
-        self._html_converter = HtmlConverter()
 
     def accepts(
         self,
@@ -142,16 +152,18 @@ class XlsConverter(DocumentConverter):
                 _xls_dependency_exc_info[2]
             )
 
-        sheets = pd.read_excel(file_stream, sheet_name=None, engine="xlrd")
+        wb = xlrd.open_workbook(file_contents=file_stream.read())
         md_content = ""
-        for s in sheets:
-            md_content += f"## {s}\n"
-            html_content = sheets[s].to_html(index=False)
-            md_content += (
-                self._html_converter.convert_string(
-                    html_content, **kwargs
-                ).markdown.strip()
-                + "\n\n"
-            )
+        for sheet_name in wb.sheet_names():
+            ws = wb.sheet_by_name(sheet_name)
+            if ws.nrows == 0:
+                continue
+            headers = [ws.cell_value(0, c) for c in range(ws.ncols)]
+            data = [
+                [ws.cell_value(r, c) for c in range(ws.ncols)]
+                for r in range(1, ws.nrows)
+            ]
+            md_content += f"## {sheet_name}\n"
+            md_content += _rows_to_markdown(headers, data) + "\n\n"
 
         return DocumentConverterResult(markdown=md_content.strip())
