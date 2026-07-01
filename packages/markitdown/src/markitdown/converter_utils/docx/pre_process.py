@@ -1,6 +1,8 @@
+import struct
 import zipfile
+import zlib
 from io import BytesIO
-from typing import BinaryIO
+from typing import BinaryIO, List, Tuple
 from xml.etree import ElementTree as ET
 
 from bs4 import BeautifulSoup, Tag
@@ -115,6 +117,74 @@ def _pre_process_math(content: bytes) -> bytes:
     return str(soup).encode()
 
 
+def _extract_member_raw(raw: bytes, info: zipfile.ZipInfo) -> bytes:
+    """
+    Extracts a single zip member's bytes directly from its local file header,
+    bypassing zipfile's strict local-vs-central filename check.
+
+    Some tools (e.g. certain Word/Microsoft Graph exports) emit .docx files whose
+    local file header stores a filename with different letter-casing than the
+    central directory entry (e.g. local ``customXML/item5.xml`` vs central
+    ``customXml/item5.xml``). Python's ``zipfile`` rejects these with
+    ``BadZipFile``. This helper reads the compressed data using the offsets from
+    the central directory (``info``) and decompresses it manually.
+
+    Args:
+        raw (bytes): The full bytes of the zip/docx file.
+        info (zipfile.ZipInfo): The central-directory info for the member.
+
+    Returns:
+        bytes: The decompressed member content.
+    """
+    off = info.header_offset
+    if raw[off : off + 4] != b"PK\x03\x04":
+        raise zipfile.BadZipFile(
+            f"Bad local file header for {info.filename!r} at offset {off}"
+        )
+    fname_len = struct.unpack("<H", raw[off + 26 : off + 28])[0]
+    extra_len = struct.unpack("<H", raw[off + 28 : off + 30])[0]
+    data_start = off + 30 + fname_len + extra_len
+    compressed = raw[data_start : data_start + info.compress_size]
+
+    if info.compress_type == zipfile.ZIP_STORED:
+        return compressed
+    if info.compress_type == zipfile.ZIP_DEFLATED:
+        return zlib.decompress(compressed, -15)
+    raise zipfile.BadZipFile(
+        f"Unsupported compression type {info.compress_type} for {info.filename!r}"
+    )
+
+
+def _read_docx_members(input_docx: BinaryIO) -> Tuple[bytes, List[Tuple[str, bytes]]]:
+    """
+    Reads every member of a (possibly slightly malformed) .docx zip.
+
+    Falls back to :func:`_extract_member_raw` for any member that ``zipfile``
+    refuses to read because of a local-vs-central filename mismatch, so that
+    documents with inconsistent internal filename casing can still be converted.
+
+    Args:
+        input_docx (BinaryIO): The binary input stream of the .docx file.
+
+    Returns:
+        Tuple[bytes, List[Tuple[str, bytes]]]: The zip archive comment and an
+        ordered list of ``(member_name, content)`` pairs.
+    """
+    input_docx.seek(0)
+    raw = input_docx.read()
+
+    with zipfile.ZipFile(BytesIO(raw), mode="r") as zip_input:
+        comment = zip_input.comment
+        members: List[Tuple[str, bytes]] = []
+        for info in zip_input.infolist():
+            try:
+                content = zip_input.read(info.filename)
+            except zipfile.BadZipFile:
+                content = _extract_member_raw(raw, info)
+            members.append((info.filename, content))
+    return comment, members
+
+
 def pre_process_docx(input_docx: BinaryIO) -> BinaryIO:
     """
     Pre-processes a DOCX file with provided steps.
@@ -136,21 +206,22 @@ def pre_process_docx(input_docx: BinaryIO) -> BinaryIO:
         "word/footnotes.xml",
         "word/endnotes.xml",
     ]
-    with zipfile.ZipFile(input_docx, mode="r") as zip_input:
-        files = {name: zip_input.read(name) for name in zip_input.namelist()}
-        with zipfile.ZipFile(output_docx, mode="w") as zip_output:
-            zip_output.comment = zip_input.comment
-            for name, content in files.items():
-                if name in pre_process_enable_files:
-                    try:
-                        # Pre-process the content
-                        updated_content = _pre_process_math(content)
-                        # In the future, if there are more pre-processing steps, they can be added here
-                        zip_output.writestr(name, updated_content)
-                    except Exception:
-                        # If there is an error in processing the content, write the original content
-                        zip_output.writestr(name, content)
-                else:
+    # Read members tolerantly so that documents with mismatched internal
+    # filename casing (BadZipFile) can still be re-zipped and converted.
+    comment, members = _read_docx_members(input_docx)
+    with zipfile.ZipFile(output_docx, mode="w") as zip_output:
+        zip_output.comment = comment
+        for name, content in members:
+            if name in pre_process_enable_files:
+                try:
+                    # Pre-process the content
+                    updated_content = _pre_process_math(content)
+                    # In the future, if there are more pre-processing steps, they can be added here
+                    zip_output.writestr(name, updated_content)
+                except Exception:
+                    # If there is an error in processing the content, write the original content
                     zip_output.writestr(name, content)
+            else:
+                zip_output.writestr(name, content)
     output_docx.seek(0)
     return output_docx

@@ -274,6 +274,22 @@ def test_docx_equations() -> None:
     assert block_equations, "No block equations found in the document."
 
 
+def test_docx_zip_filename_case_mismatch() -> None:
+    # Regression test: some tools emit .docx files whose zip local file header
+    # stores a member filename with different letter-casing than the central
+    # directory entry (e.g. local "customXML/item1.xml" vs central
+    # "customXml/item1.xml"). Python's zipfile rejects these with BadZipFile,
+    # which previously aborted conversion before any content was read.
+    markitdown = MarkItDown()
+    docx_file = os.path.join(TEST_FILES_DIR, "test_docx_case_mismatch.docx")
+    result = markitdown.convert(docx_file)
+
+    assert "# Audio file" in result.text_content
+    assert "https://example.com/recording.mp3" in result.text_content
+    assert "1f4b2c9a-7e63-4d21-9a0e-3c5f8b6d2a11" in result.text_content
+
+
+
 def test_input_as_strings() -> None:
     markitdown = MarkItDown()
 
