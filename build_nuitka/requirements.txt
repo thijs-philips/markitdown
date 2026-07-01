@@ -38,3 +38,6 @@ ebooklib>=0.18
 
 # --- Build tool ---
 nuitka>=4.1
+# NOTE: hatchling + editables (the PEP 517 backend for the editable markitdown
+# install) are installed separately by build.ps1 with a PyPI fallback, because
+# the configured (corporate) package index does not always mirror them.

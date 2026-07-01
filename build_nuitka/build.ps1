@@ -112,6 +112,21 @@ if (-not $SkipVenv) {
     & $VenvPython -m pip install -r $reqFile --quiet
     if ($LASTEXITCODE -ne 0) { throw "pip install requirements failed." }
 
+    # The editable markitdown install below uses --no-build-isolation, so its
+    # PEP 517 backend (hatchling) and hatchling's editable helper (editables)
+    # must already be present in the venv. The configured (corporate) index does
+    # not always mirror them, so install with a public-PyPI fallback.
+    & $VenvPython -c "import hatchling.build, editables" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[Install] Installing editable-build backend (hatchling + editables)..." -ForegroundColor Yellow
+        & $VenvPython -m pip install "hatchling>=1.25" editables --quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[Install] Configured index lacks them; falling back to PyPI..." -ForegroundColor Yellow
+            & $VenvPython -m pip install "hatchling>=1.25" editables --index-url https://pypi.org/simple --quiet
+        }
+        if ($LASTEXITCODE -ne 0) { throw "Failed to install hatchling/editables build backend." }
+    }
+
     # --no-build-isolation: the build backend (hatchling) is resolved from the
     # current venv instead of being fetched fresh from the index, which avoids
     # interactive credential prompts against private/auth indexes.
