@@ -3,11 +3,23 @@
 #
 # SPDX-License-Identifier: MIT
 """
-Minimal entry point for the Nuitka-compiled MarkItDown executable.
-Reuses the existing markitdown CLI (markitdown.__main__).
+Nuitka entry point for the compiled MarkItDown executable.
+
+Thin shim: forces UTF-8 console output and delegates all argument parsing /
+conversion to the shared CLI core (``markitdown_cli_core``), so the Nuitka and
+PyInstaller builds behave identically.
 """
+
+import os
 import sys
-import io
+
+# Make the shared CLI core importable when running unfrozen (dev). When compiled,
+# Nuitka includes markitdown_cli_core in the binary and this path is ignored.
+_BUILD_COMMON = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "build_common"
+)
+if os.path.isdir(_BUILD_COMMON):
+    sys.path.insert(0, _BUILD_COMMON)
 
 # Force UTF-8 on stdout/stderr so non-ASCII output (e.g. Japanese)
 # is not replaced with '?' by the console codepage.
@@ -16,7 +28,18 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from markitdown.__main__ import main
+
+def main() -> None:
+    from markitdown_cli_core import run
+
+    base_dir = (
+        os.path.dirname(sys.executable)
+        if getattr(sys, "frozen", False)
+        else os.path.dirname(os.path.abspath(__file__))
+    )
+    run(version_suffix="(nuitka)", base_dir=base_dir)
+
 
 if __name__ == "__main__":
     main()
+

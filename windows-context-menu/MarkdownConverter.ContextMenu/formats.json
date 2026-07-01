@@ -1,0 +1,12 @@
+{
+  "markdownExtensions": [
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".xls",
+    ".msg",
+    ".html",
+    ".htm"
+  ]
+}

@@ -35,19 +35,33 @@ param(
     [switch]$SkipVenv,
     [switch]$Clean,
     [ValidateSet("msvc", "zig")]
-    [string]$Compiler = "msvc"
+    [string]$Compiler = "msvc",
+    # Parallel C-compilation jobs. Default leaves headroom so the PC stays
+    # usable during the build (≈ 75% of logical CPUs, min 1). Pass 0 to let
+    # Nuitka use all cores.
+    [int]$Jobs = 0
 )
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $VenvDir = Join-Path $ScriptDir ".venv"
+$VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $OutputDir = Join-Path $ScriptDir "output"
 $DistDir = Join-Path $OutputDir "entry.dist"
+
+# Resolve a sensible default job count: leave ~25% of cores free (min 1) so the
+# machine remains responsive for other work during the long compile.
+$cpuCount = [int]$env:NUMBER_OF_PROCESSORS
+if ($cpuCount -lt 1) { $cpuCount = 4 }
+if ($Jobs -le 0) {
+    $Jobs = [Math]::Max(1, [int][Math]::Floor($cpuCount * 0.75))
+}
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  MarkItDown Nuitka Builder" -ForegroundColor Cyan
 Write-Host "  Compiler: $Compiler" -ForegroundColor Cyan
+Write-Host "  Jobs: $Jobs of $cpuCount CPUs" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -72,27 +86,44 @@ if (-not $SkipVenv) {
     } else {
         Write-Host "[Venv] Using existing virtual environment at $VenvDir" -ForegroundColor Yellow
     }
-
-    # Activate
-    $activateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
-    & $activateScript
 }
+
+# The build ALWAYS compiles with the lean .venv interpreter, even with
+# -SkipVenv. Using the bare `python`/`pip` on PATH would silently pull in the
+# global environment (e.g. a system-wide torch install), bloating the binary
+# and massively slowing the C compilation. Fail loudly if the venv is missing.
+if (-not (Test-Path $VenvPython)) {
+    throw "Lean build venv not found at $VenvPython. Run without -SkipVenv first to create it."
+}
+Write-Host "[Venv] Build interpreter: $VenvPython" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # Step 2: Install dependencies
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "[Install] Installing lean dependencies and markitdown (editable)..." -ForegroundColor Yellow
+# Installs are a SETUP step: only run when not -SkipVenv. With -SkipVenv we
+# assume the lean venv is already populated (markitdown editable + lean reqs)
+# and jump straight to compiling. This also avoids re-hitting any configured
+# private/auth package index (e.g. corporate Artifactory) on every build.
+if (-not $SkipVenv) {
+    Write-Host ""
+    Write-Host "[Install] Installing lean dependencies and markitdown (editable)..." -ForegroundColor Yellow
 
-$reqFile = Join-Path $ScriptDir "requirements.txt"
-pip install -r $reqFile --quiet
-if ($LASTEXITCODE -ne 0) { throw "pip install requirements failed." }
+    $reqFile = Join-Path $ScriptDir "requirements.txt"
+    & $VenvPython -m pip install -r $reqFile --quiet
+    if ($LASTEXITCODE -ne 0) { throw "pip install requirements failed." }
 
-$markitdownPkg = Join-Path $RepoRoot "packages\markitdown"
-pip install -e $markitdownPkg --no-deps --quiet
-if ($LASTEXITCODE -ne 0) { throw "pip install markitdown failed." }
+    # --no-build-isolation: the build backend (hatchling) is resolved from the
+    # current venv instead of being fetched fresh from the index, which avoids
+    # interactive credential prompts against private/auth indexes.
+    $markitdownPkg = Join-Path $RepoRoot "packages\markitdown"
+    & $VenvPython -m pip install -e $markitdownPkg --no-deps --no-build-isolation --quiet
+    if ($LASTEXITCODE -ne 0) { throw "pip install markitdown failed." }
 
-Write-Host "[Install] Done." -ForegroundColor Green
+    Write-Host "[Install] Done." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "[Install] Skipped (-SkipVenv): using existing venv packages." -ForegroundColor Yellow
+}
 
 # ---------------------------------------------------------------------------
 # Step 3: Run Nuitka
@@ -101,6 +132,11 @@ Write-Host ""
 Write-Host "[Build] Running Nuitka (standalone, $Compiler)..." -ForegroundColor Yellow
 
 $entryPoint = Join-Path $ScriptDir "entry.py"
+
+# Shared CLI core (build_common/markitdown_cli_core.py) must be importable so
+# Nuitka follows and compiles it into the binary.
+$BuildCommonDir = Join-Path $RepoRoot "build_common"
+$env:PYTHONPATH = $BuildCommonDir
 
 $nuitkaArgs = @(
     "-m", "nuitka",
@@ -111,7 +147,9 @@ $nuitkaArgs = @(
     "--no-deployment-flag=self-execution",
     "--include-package=markitdown",
     "--include-package=markitdown.converters",
-    "--include-package=markitdown.converter_utils"
+    "--include-package=markitdown.converter_utils",
+    "--include-module=markitdown_cli_core",
+    "--jobs=$Jobs"
 )
 
 if ($Compiler -eq "msvc") {
@@ -122,7 +160,7 @@ if ($Compiler -eq "msvc") {
 
 $nuitkaArgs += $entryPoint
 
-python @nuitkaArgs
+& $VenvPython @nuitkaArgs
 if ($LASTEXITCODE -ne 0) { throw "Nuitka build failed." }
 
 Write-Host "[Build] Done." -ForegroundColor Green

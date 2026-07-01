@@ -166,3 +166,13 @@ cython_debug/
 src/.DS_Store
 .DS_Store
 .cursorrules
+
+# Scratch / temporary investigation files
+scratch/
+
+# Transient build log output at repo root
+/nuitka_csv_out.txt
+/pyinstaller_csv_out.txt
+
+# Large / proprietary sample documents (do not commit)
+/test_data/

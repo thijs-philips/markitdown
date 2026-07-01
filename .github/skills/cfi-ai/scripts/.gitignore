@@ -1,0 +1,10 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+test-results.log
+run_all_output.log
+*.png
+*.mp3
+*.mp4
+temp/

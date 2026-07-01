@@ -1,0 +1,58 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MarkdownConverter</RootNamespace>
+    <AssemblyName>MarkdownConverter</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefaultItemExcludes>$(DefaultItemExcludes);MarkdownConverter.ContextMenu\**</DefaultItemExcludes>
+    <ApplicationIcon>MarkdownConverter.ico</ApplicationIcon>
+    <!-- Faster startup via AOT-precompiled native code. Applies on `dotnet publish -r win-x64`. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <Title>Markdown Converter</Title>
+    <Description>Context menu document-to-Markdown converter for Windows</Description>
+    <RepositoryUrl>https://github.com/thijs-philips/markitdown</RepositoryUrl>
+    <PackageProjectUrl></PackageProjectUrl>
+    <PackageIcon>MarkdownConverter.ico</PackageIcon>
+    <RepositoryUrl>https://github.com/thijs-philips/markitdown</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <NeutralLanguage>en-NZ</NeutralLanguage>
+    <Authors>Terry Petersen</Authors>
+    <Company>DevEpic</Company>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Configurations>Debug;Release;Publish to ProgramFiles</Configurations>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="MarkdownConverter.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommandLineParser" Version="2.9.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="MarkdownConverter.ico">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="markitdown\**" CopyToOutputDirectory="PreserveNewest" LinkBase="markitdown" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="MarkdownConverter.ContextMenu\MarkdownConverter.ContextMenu.csproj" />
+  </ItemGroup>
+
+
+  <Target Name="CopyToProgramFiles" AfterTargets="Build" Condition="'$(Configuration)' == 'Publish to ProgramFiles'">
+    <Exec Command="robocopy &quot;$(TargetDir.TrimEnd('\'))&quot; &quot;C:\ProgramFiles\MarkdownConverter&quot; /MIR /NJH /NJS /NP" IgnoreExitCode="true" />
+  </Target>
+
+</Project>
