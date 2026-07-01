@@ -9,7 +9,7 @@
 ;------------------------------------------------------------------------------
 
 #define MyAppName "Markdown Converter"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "DevEpic"
 #define MyAppURL "https://github.com/DevEpic/MarkdownConverter"
 #define MyAppExeName "MarkdownConverter.exe"
